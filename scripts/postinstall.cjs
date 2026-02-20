@@ -7,15 +7,32 @@ function patchPGlitePrismaAdapterBytes() {
     path.join(process.cwd(), 'node_modules', 'pglite-prisma-adapter', 'dist', 'index.mjs'),
     path.join(process.cwd(), 'node_modules', 'pglite-prisma-adapter', 'dist', 'index.cjs'),
   ];
-  const needle = 'return parsePgBytes(serializedBytes);';
-  const replacement = 'return Array.from(parsePgBytes(serializedBytes));';
+  const replacements = [
+    {
+      needle: 'return parsePgBytes(serializedBytes);',
+      replacement: 'return Array.from(parsePgBytes(serializedBytes));',
+      label: 'convertBytes',
+    },
+    {
+      needle: 'rows\n\t\t};',
+      replacement: 'rows: rows.map((row) => row.map((value) => ArrayBuffer.isView(value) ? Array.from(value) : value))\n\t\t};',
+      label: 'queryRaw rows normalizer',
+    },
+  ];
 
   for (const file of targets) {
     if (!fs.existsSync(file)) continue;
-    const src = fs.readFileSync(file, 'utf8');
-    if (!src.includes(needle) || src.includes(replacement)) continue;
-    fs.writeFileSync(file, src.replace(needle, replacement), 'utf8');
-    console.log(`[postinstall] patched pglite-prisma-adapter bytes parser: ${path.relative(process.cwd(), file)}`);
+    let src = fs.readFileSync(file, 'utf8');
+    let changed = false;
+    for (const { needle, replacement, label } of replacements) {
+      if (!src.includes(needle) || src.includes(replacement)) continue;
+      src = src.replace(needle, replacement);
+      changed = true;
+      console.log(`[postinstall] patched pglite-prisma-adapter ${label}: ${path.relative(process.cwd(), file)}`);
+    }
+    if (changed) {
+      fs.writeFileSync(file, src, 'utf8');
+    }
   }
 }
 
